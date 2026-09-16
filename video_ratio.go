@@ -22,14 +22,12 @@ func getVideoAspectRatio(filePath string) (string, error) {
 	cmd := exec.Command("ffprobe", "-v", "error", "-print_format", "json", "-show_streams", filePath)
 	buf := bytes.Buffer{}
 	cmd.Stdout = &buf
-	fmt.Println("got there 1")
 
 	err := cmd.Run()
 	if err != nil {
 		fmt.Println(err)
 		return "", err
 	}
-	fmt.Println("got there 2")
 
 	js := aspect{}
 	err = json.Unmarshal(buf.Bytes(), &js)
@@ -38,7 +36,6 @@ func getVideoAspectRatio(filePath string) (string, error) {
 	}
 	hei := js.Stream[0].Height
 	wei := js.Stream[0].Width
-	fmt.Println("got there 3", wei, hei)
 	ratio := float64(wei) / float64(hei)
 
 	if math.Abs(ratio-16.0/9.0) < 0.01 {

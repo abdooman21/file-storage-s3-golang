@@ -109,8 +109,12 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		respondWithError(w, http.StatusInternalServerError, "failed to generate random filename", err)
 		return
 	}
-	filename := fmt.Sprintf("%s.mp4", hex.EncodeToString(seed))
-
+	aspect, err := getVideoAspectRatio(tempfile.Name())
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "file corruption", err)
+		return
+	}
+	filename := fmt.Sprintf("%s/%s.mp4", aspect, hex.EncodeToString(seed))
 	params := s3.PutObjectInput{
 		Bucket:      &cfg.s3Bucket,
 		Key:         &filename,
