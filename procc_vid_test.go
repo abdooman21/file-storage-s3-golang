@@ -18,6 +18,7 @@ func TestFaststart(t *testing.T) {
 		t.Log(err)
 		t.Fail()
 	}
+	defer os.Remove(outPath)
 	// Source - https://stackoverflow.com/a/78673947
 	// Posted by Nathan Smith
 	// Retrieved 2026-09-17, License - CC BY-SA 4.0
