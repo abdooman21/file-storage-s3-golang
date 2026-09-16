@@ -114,11 +114,25 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		respondWithError(w, http.StatusInternalServerError, "file corruption", err)
 		return
 	}
+
+	newpath, err := processVideoForFastStart(tempfile.Name())
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "file corruption", err)
+		return
+	}
+	defer os.Remove(newpath)
 	filename := fmt.Sprintf("%s/%s.mp4", aspect, hex.EncodeToString(seed))
+	faststart_vid, err := os.Open(newpath)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "file corruption", err)
+		return
+	}
+	defer faststart_vid.Close()
+
 	params := s3.PutObjectInput{
 		Bucket:      &cfg.s3Bucket,
 		Key:         &filename,
-		Body:        tempfile,
+		Body:        faststart_vid,
 		ContentType: &vidtype,
 	}
 	_, err = cfg.s3client.PutObject(r.Context(), &params)
