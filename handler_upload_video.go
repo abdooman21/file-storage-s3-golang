@@ -1,14 +1,18 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"strings"
+	"time"
 
 	"github.com/abdooman21/file-storage-s3-golang/internal/auth"
+	"github.com/abdooman21/file-storage-s3-golang/internal/database"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/google/uuid"
 )
@@ -121,7 +125,7 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	defer os.Remove(newpath)
-	filename := fmt.Sprintf("%s/%s.mp4", aspect, hex.EncodeToString(seed))
+	filename := fmt.Sprintf("%s,%s/%s.mp4", cfg.s3Bucket, aspect, hex.EncodeToString(seed))
 	faststart_vid, err := os.Open(newpath)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "file corruption", err)
@@ -129,25 +133,62 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 	}
 	defer faststart_vid.Close()
 
-	params := s3.PutObjectInput{
-		Bucket:      &cfg.s3Bucket,
-		Key:         &filename,
-		Body:        faststart_vid,
-		ContentType: &vidtype,
-	}
-	_, err = cfg.s3client.PutObject(r.Context(), &params)
+	// params := s3.PutObjectInput{
+	// 	Bucket:      &cfg.s3Bucket,
+	// 	Key:         &filename,
+	// 	Body:        faststart_vid,
+	// 	ContentType: &vidtype,
+	// }
+	// _, err = cfg.s3client.PutObject(r.Context(), &params)
+	// if err != nil {
+	// 	respondWithError(w, http.StatusInternalServerError, "writing vid error", err)
+	// 	return
+	// }
+	//https://<bucket-name>.s3.<region>.amazonaws.com/<key>
+	vidurl := filename
+
+	vidmeta.VideoURL = &vidurl
+	vidmeta, err = cfg.dbVideoToSignedVideo(vidmeta)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "writing vid error", err)
 		return
 	}
-	//https://<bucket-name>.s3.<region>.amazonaws.com/<key>
-	vidurl := fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", cfg.s3Bucket, cfg.s3Region, filename)
 
-	vidmeta.VideoURL = &vidurl
 	err = cfg.db.UpdateVideo(vidmeta)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "writing vid error", err)
 		return
 	}
+
 	respondWithJSON(w, http.StatusAccepted, nil)
+}
+
+func (cfg *apiConfig) dbVideoToSignedVideo(video database.Video) (database.Video, error) {
+	spli := strings.Split(*video.VideoURL, ",")
+	bucket := spli[0]
+	key := spli[1]
+
+	vidurl, err := generatePresignedURL(cfg.s3client, bucket, key, 15*time.Minute)
+	if err != nil {
+		return video, err
+	}
+	video.VideoURL = &vidurl
+	return video, nil
+}
+
+func generatePresignedURL(s3Client *s3.Client, bucket, key string, expireTime time.Duration) (string, error) {
+
+	pcli := s3.NewPresignClient(s3Client, s3.WithPresignExpires(expireTime))
+	link, err := pcli.PresignPutObject(context.Background(),
+		&s3.PutObjectInput{
+			Bucket: &bucket,
+			Key:    &key,
+		},
+	)
+	if err != nil {
+		return "", err
+	}
+
+	return link.URL, nil
+
 }
